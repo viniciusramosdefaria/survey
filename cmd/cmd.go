@@ -5,80 +5,60 @@ import (
 	"fmt"
 	"github.com/Netflix/go-expect"
 	"os/exec"
-
-	"github.com/AlecAivazis/survey/v2"
+	"regexp"
+	"time"
 )
 
-// the questions to ask
-var simpleQs = []*survey.Question{
-	{
-		Name: "name",
-		Prompt: &survey.Input{
-			Message: "What is your name?",
-		},
-		Validate:  survey.Required,
-		Transform: survey.Title,
-	},
-	{
-		Name: "color",
-		Prompt: &survey.Select{
-			Message: "Choose a color:",
-			Options: []string{"red", "blue", "green"},
-		},
-		Validate: survey.Required,
-	},
+type testCase struct {
+	input     string
+	expectOut string
 }
 
 func main() {
 
-	//answers := struct {
-	//	Name  string
-	//	Color string
-	//}{}
-	//
-	//// ask the question
-	//err := survey.Ask(simpleQs, &answers)
-	//
-	//if err != nil {
-	//	fmt.Println(err.Error())
-	//	return
-	//}
-	//// print the answers
-	//fmt.Printf("%s chose %s.\n", answers.Name, answers.Color)
+	terminalRunner()
 
-	createTerminal()
 }
 
-func createTerminal(){
+func terminalRunner() {
 	bufOut := new(bytes.Buffer)
-	bufIn := new(bytes.Buffer)
-	c, err := expect.NewConsole(expect.WithStdout(bufOut), expect.WithStdin(bufIn))
+	c, err := expect.NewConsole(expect.WithStdout(bufOut))
 	if err != nil {
 		fmt.Println(err)
 	}
 	defer c.Close()
 
-	cmd := exec.Command("rit","set", "context")
+	cmd := exec.Command("rit", "scaffold", "generate", "coffee-go")
 
 	cmd.Stdin = c.Tty()
 	cmd.Stdout = c.Tty()
 
-	donec := make(chan struct{})
 	go func() {
-		defer close(donec)
 		c.ExpectEOF()
+	}()
+
+	testCases := []testCase{
+		{input: "test", expectOut: ".*Type your name.*"},
+		{input: "es", expectOut: ".*Pick your coffee.*"},
+		{input: "", expectOut: ".*Delivery.*"},
+	}
+
+	go func() {
+		for i := 0; i < len(testCases); i++ {
+			for {
+				matched, _ := regexp.MatchString(testCases[i].expectOut, bufOut.String())
+				if matched {
+					c.SendLine(testCases[i].input)
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}
 	}()
 
 	cmd.Start()
 
-	c.SendLine("ty")
-
-	c.ExpectString("New context:")
-
-	c.SendLine("test\n")
-
 	cmd.Wait()
 
 	fmt.Println(bufOut.String())
-
 }
